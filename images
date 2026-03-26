@@ -1,0 +1,769 @@
+
+html_part3 = '''
+    <script>
+        // Game State
+        let userData = {
+            balance: 1000,
+            username: 'Игрок',
+            userId: 'unknown',
+            gamesPlayed: 0,
+            wins: 0,
+            gifts: [],
+            nfts: [],
+            referrals: 0,
+            refEarnings: 0,
+            refCode: 'REF' + Math.floor(Math.random() * 1000000)
+        };
+
+        // Game Config
+        const bets = {
+            rocket: 100,
+            wheel: 100,
+            plane: 100,
+            plinko: 100
+        };
+
+        const gifts = [
+            { id: 1, emoji: '🌹', name: 'Роза', price: 50, rarity: 'common' },
+            { id: 2, emoji: '🍫', name: 'Конфета', price: 100, rarity: 'common' },
+            { id: 3, emoji: '🎈', name: 'Шарик', price: 150, rarity: 'common' },
+            { id: 4, emoji: '🧸', name: 'Мишка', price: 300, rarity: 'rare' },
+            { id: 5, emoji: '🎁', name: 'Подарок', price: 500, rarity: 'rare' },
+            { id: 6, emoji: '💎', name: 'Алмаз', price: 1000, rarity: 'epic' },
+            { id: 7, emoji: '👑', name: 'Корона', price: 2000, rarity: 'legendary' },
+            { id: 8, emoji: '🚀', name: 'Ракета', price: 5000, rarity: 'legendary' },
+            { id: 9, emoji: '🌟', name: 'Звезда', price: 10000, rarity: 'mythic' }
+        ];
+
+        const nfts = [
+            { id: 1, emoji: '🐱', name: 'CryptoCat', collection: 'Pets', price: 500, rarity: 'common' },
+            { id: 2, emoji: '🐶', name: 'DogeCoin', collection: 'Pets', price: 750, rarity: 'common' },
+            { id: 3, emoji: '🦊', name: 'MetaFox', collection: 'Wild', price: 1200, rarity: 'rare' },
+            { id: 4, emoji: '🦁', name: 'KingLion', collection: 'Wild', price: 2500, rarity: 'epic' },
+            { id: 5, emoji: '🐉', name: 'DragonNFT', collection: 'Mythic', price: 5000, rarity: 'legendary' },
+            { id: 6, emoji: '👽', name: 'AlienX', collection: 'Space', price: 10000, rarity: 'mythic' }
+        ];
+
+        const cases = [
+            { id: 1, emoji: '📦', name: 'Базовый', price: 100, rarity: 'common' },
+            { id: 2, emoji: '🎁', name: 'Редкий', price: 500, rarity: 'rare' },
+            { id: 3, emoji: '💎', name: 'Эпический', price: 1000, rarity: 'epic' },
+            { id: 4, emoji: '🔮', name: 'Легендарный', price: 2500, rarity: 'legendary' }
+        ];
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            initTelegram();
+            loadData();
+            createParticles();
+            initWheel();
+            initPlinko();
+            renderGifts();
+            renderNFTs();
+            renderCases();
+            renderLeaderboard();
+            updateUI();
+        });
+
+        // Telegram Integration
+        function initTelegram() {
+            if (window.Telegram && Telegram.WebApp) {
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+                
+                const user = Telegram.WebApp.initDataUnsafe?.user;
+                if (user) {
+                    userData.username = user.first_name || 'Игрок';
+                    userData.userId = user.id;
+                    if (user.photo_url) {
+                        document.getElementById('userAvatar').innerHTML = `<img src="${user.photo_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+                        document.getElementById('profileAvatar').innerHTML = `<img src="${user.photo_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+                    } else {
+                        document.getElementById('userAvatar').textContent = user.first_name?.[0] || '👤';
+                        document.getElementById('profileAvatar').textContent = user.first_name?.[0] || '👤';
+                    }
+                }
+            }
+            document.getElementById('userId').textContent = 'ID: ' + userData.userId;
+            document.getElementById('profileIdFull').textContent = 'ID: ' + userData.userId;
+            document.getElementById('profileName').textContent = userData.username;
+        }
+
+        // Data Management
+        function loadData() {
+            const saved = localStorage.getItem('glCasinoData');
+            if (saved) {
+                const data = JSON.parse(saved);
+                userData = { ...userData, ...data };
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('glCasinoData', JSON.stringify(userData));
+        }
+
+        function resetData() {
+            if (confirm('Сбросить весь прогресс? Баланс вернётся к 1000 GL.')) {
+                userData.balance = 1000;
+                userData.gamesPlayed = 0;
+                userData.wins = 0;
+                userData.gifts = [];
+                userData.nfts = [];
+                userData.referrals = 0;
+                userData.refEarnings = 0;
+                saveData();
+                updateUI();
+                showToast('Прогресс сброшен!', 'success');
+            }
+        }
+
+        // UI Updates
+        function updateUI() {
+            document.getElementById('balance').textContent = formatNumber(userData.balance) + ' GL';
+            document.getElementById('refCode').textContent = userData.refCode;
+            document.getElementById('refCount').textContent = userData.referrals;
+            document.getElementById('refEarnings').textContent = userData.refEarnings;
+            document.getElementById('statGames').textContent = userData.gamesPlayed;
+            document.getElementById('statWins').textContent = userData.wins;
+            const luck = userData.gamesPlayed > 0 ? Math.round((userData.wins / userData.gamesPlayed) * 100) : 0;
+            document.getElementById('statLuck').textContent = luck + '%';
+            saveData();
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toLocaleString();
+        }
+
+        // Navigation
+        function showMainSection(section) {
+            document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+            document.querySelectorAll('.game-container').forEach(g => g.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            
+            document.getElementById(section + 'Section').classList.remove('hidden');
+            event.target.closest('.nav-item').classList.add('active');
+            
+            if (section === 'games') {
+                document.getElementById('gamesSection').classList.remove('hidden');
+            }
+        }
+
+        function showGame(game) {
+            document.getElementById('gamesSection').classList.add('hidden');
+            document.getElementById(game + 'Game').classList.add('active');
+        }
+
+        function showSection(section) {
+            document.querySelectorAll('.game-container').forEach(g => g.classList.remove('active'));
+            document.getElementById('gamesSection').classList.remove('hidden');
+        }
+
+        // Betting
+        function setBet(game, amount) {
+            if (amount === 'all') {
+                bets[game] = userData.balance;
+            } else {
+                bets[game] = amount;
+            }
+            document.getElementById(game + 'Bet').textContent = formatNumber(bets[game]) + ' GL';
+        }
+
+        // Rocket Game
+        let rocketInterval, rocketMultiplier = 1;
+        function startRocket() {
+            const bet = bets.rocket;
+            if (bet > userData.balance) {
+                showToast('Недостаточно средств!', 'error');
+                return;
+            }
+            
+            userData.balance -= bet;
+            userData.gamesPlayed++;
+            updateUI();
+            
+            document.getElementById('rocketBtn').classList.add('hidden');
+            document.getElementById('cashoutBtn').classList.remove('hidden');
+            
+            const rocket = document.getElementById('rocket');
+            const trail = document.getElementById('rocketTrail');
+            const multiplierDisplay = document.getElementById('rocketMultiplier');
+            
+            rocket.classList.add('flying');
+            rocketMultiplier = 1.0;
+            
+            const crashPoint = 1 + Math.random() * 4 + Math.random() * 3; // 1.0x to 8.0x
+            
+            rocketInterval = setInterval(() => {
+                rocketMultiplier += 0.01;
+                multiplierDisplay.textContent = rocketMultiplier.toFixed(2) + 'x';
+                
+                const progress = (rocketMultiplier - 1) / (crashPoint - 1);
+                rocket.style.bottom = (50 + progress * 300) + 'px';
+                trail.style.height = (50 + progress * 300) + 'px';
+                
+                if (rocketMultiplier >= crashPoint) {
+                    crashRocket();
+                }
+            }, 50);
+        }
+
+        function cashoutRocket() {
+            clearInterval(rocketInterval);
+            const win = Math.floor(bets.rocket * rocketMultiplier);
+            userData.balance += win;
+            userData.wins++;
+            updateUI();
+            
+            showModal('🚀', 'Успешный взлёт!', `Вы забрали ${formatNumber(win)} GL при x${rocketMultiplier.toFixed(2)}`);
+            createConfetti();
+            resetRocket();
+        }
+
+        function crashRocket() {
+            clearInterval(rocketInterval);
+            const crashLine = document.getElementById('crashLine');
+            const rocket = document.getElementById('rocket');
+            
+            crashLine.style.display = 'block';
+            crashLine.style.bottom = rocket.style.bottom;
+            rocket.textContent = '💥';
+            rocket.classList.remove('flying');
+            
+            setTimeout(() => {
+                showToast('Ракета взорвалась! Вы потеряли ставку.', 'error');
+                resetRocket();
+            }, 1000);
+        }
+
+        function resetRocket() {
+            document.getElementById('rocketBtn').classList.remove('hidden');
+            document.getElementById('cashoutBtn').classList.add('hidden');
+            document.getElementById('rocket').textContent = '🚀';
+            document.getElementById('rocket').style.bottom = '50px';
+            document.getElementById('rocket').classList.remove('flying');
+            document.getElementById('rocketTrail').style.height = '0';
+            document.getElementById('rocketMultiplier').textContent = '1.00x';
+            document.getElementById('crashLine').style.display = 'none';
+        }
+
+        // Wheel Game
+        const wheelSegments = [
+            { value: 0, color: '#FF6B6B', label: '0x' },
+            { value: 1.5, color: '#4ECDC4', label: '1.5x' },
+            { value: 2, color: '#45B7D1', label: '2x' },
+            { value: 0.5, color: '#96CEB4', label: '0.5x' },
+            { value: 3, color: '#FFEAA7', label: '3x' },
+            { value: 1, color: '#DDA0DD', label: '1x' },
+            { value: 5, color: '#FFD700', label: '5x' },
+            { value: 0.2, color: '#FF9999', label: '0.2x' }
+        ];
+
+        function initWheel() {
+            const wheel = document.getElementById('wheel');
+            const segmentAngle = 360 / wheelSegments.length;
+            
+            wheelSegments.forEach((segment, i) => {
+                const div = document.createElement('div');
+                div.className = 'wheel-segment';
+                div.style.transform = `rotate(${i * segmentAngle}deg)`;
+                div.style.background = `conic-gradient(from 0deg, ${segment.color} 0deg, ${segment.color} ${segmentAngle}deg, transparent ${segmentAngle}deg)`;
+                div.innerHTML = `<span style="transform: rotate(${segmentAngle/2}deg); position: absolute; right: 20px; bottom: 20px;">${segment.label}</span>`;
+                wheel.appendChild(div);
+            });
+        }
+
+        function spinWheel() {
+            const bet = bets.wheel;
+            if (bet > userData.balance) {
+                showToast('Недостаточно средств!', 'error');
+                return;
+            }
+            
+            userData.balance -= bet;
+            userData.gamesPlayed++;
+            updateUI();
+            
+            const wheel = document.getElementById('wheel');
+            const btn = document.getElementById('wheelBtn');
+            btn.disabled = true;
+            
+            const spins = 5 + Math.random() * 5;
+            const finalAngle = spins * 360 + Math.random() * 360;
+            wheel.style.transform = `rotate(${finalAngle}deg)`;
+            
+            setTimeout(() => {
+                const segmentAngle = 360 / wheelSegments.length;
+                const normalizedAngle = finalAngle % 360;
+                const winningIndex = Math.floor((360 - normalizedAngle + segmentAngle / 2) / segmentAngle) % wheelSegments.length;
+                const result = wheelSegments[winningIndex];
+                
+                const win = Math.floor(bet * result.value);
+                userData.balance += win;
+                if (result.value > 1) userData.wins++;
+                updateUI();
+                
+                if (result.value > 1) {
+                    showModal('🎡', 'Победа!', `Выпало ${result.label}! Вы выиграли ${formatNumber(win)} GL`);
+                    createConfetti();
+                } else {
+                    showToast(`Выпало ${result.label}. Попробуйте ещё!`, 'warning');
+                }
+                
+                btn.disabled = false;
+            }, 4000);
+        }
+
+        // Plane Game
+        let planeInterval, planeDistance = 0, planeSpeed = 1;
+        function startPlane() {
+            const bet = bets.plane;
+            if (bet > userData.balance) {
+                showToast('Недостаточно средств!', 'error');
+                return;
+            }
+            
+            userData.balance -= bet;
+            userData.gamesPlayed++;
+            updateUI();
+            
+            document.getElementById('planeBtn').classList.add('hidden');
+            document.getElementById('landBtn').classList.remove('hidden');
+            
+            const plane = document.getElementById('plane');
+            const path = document.getElementById('planePath');
+            const multiplierDisplay = document.getElementById('planeMultiplier');
+            
+            planeDistance = 0;
+            planeSpeed = 1;
+            
+            const maxDistance = 300 + Math.random() * 400;
+            
+            planeInterval = setInterval(() => {
+                planeDistance += planeSpeed;
+                planeSpeed += 0.1;
+                
+                const multiplier = 1 + (planeDistance / 100);
+                multiplierDisplay.textContent = multiplier.toFixed(2) + 'x';
+                
+                plane.style.left = (50 + planeDistance) + 'px';
+                plane.style.top = (50 - Math.sin(planeDistance / 100) * 30) + '%';
+                path.style.width = planeDistance + 'px';
+                
+                if (planeDistance >= maxDistance) {
+                    crashPlane();
+                }
+            }, 50);
+        }
+
+        function landPlane() {
+            clearInterval(planeInterval);
+            const multiplier = 1 + (planeDistance / 100);
+            const win = Math.floor(bets.plane * multiplier);
+            userData.balance += win;
+            userData.wins++;
+            updateUI();
+            
+            showModal('✈️', 'Удачная посадка!', `Вы приземлились и получили ${formatNumber(win)} GL при x${multiplier.toFixed(2)}`);
+            createConfetti();
+            resetPlane();
+        }
+
+        function crashPlane() {
+            clearInterval(planeInterval);
+            const plane = document.getElementById('plane');
+            plane.textContent = '💥';
+            plane.style.transform = 'rotate(45deg)';
+            
+            setTimeout(() => {
+                showToast('Самолёт разбился! Ставка потеряна.', 'error');
+                resetPlane();
+            }, 1000);
+        }
+
+        function resetPlane() {
+            document.getElementById('planeBtn').classList.remove('hidden');
+            document.getElementById('landBtn').classList.add('hidden');
+            document.getElementById('plane').textContent = '✈️';
+            document.getElementById('plane').style.left = '50px';
+            document.getElementById('plane').style.top = '50%';
+            document.getElementById('plane').style.transform = 'none';
+            document.getElementById('planePath').style.width = '0';
+            document.getElementById('planeMultiplier').textContent = '1.00x';
+        }
+
+        // Plinko
+        function initPlinko() {
+            const board = document.getElementById('plinkoBoard');
+            const rows = 8;
+            const cols = 9;
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col <= row; col++) {
+                    const peg = document.createElement('div');
+                    peg.className = 'plinko-peg';
+                    peg.style.left = (50 + (col - row / 2) * 35) + '%';
+                    peg.style.top = (10 + row * 10) + '%';
+                    board.appendChild(peg);
+                }
+            }
+            
+            const slots = [0.2, 0.5, 1, 2, 5, 2, 1, 0.5, 0.2];
+            slots.forEach((mult, i) => {
+                const slot = document.createElement('div');
+                slot.className = 'plinko-slot';
+                slot.style.left = (10 + i * 10) + '%';
+                slot.style.width = '10%';
+                slot.textContent = mult + 'x';
+                slot.style.background = mult >= 2 ? 'rgba(0, 212, 170, 0.2)' : mult >= 1 ? 'rgba(108, 93, 211, 0.2)' : 'rgba(255, 107, 107, 0.2)';
+                board.appendChild(slot);
+            });
+        }
+
+        function dropBall() {
+            const bet = bets.plinko;
+            if (bet > userData.balance) {
+                showToast('Недостаточно средств!', 'error');
+                return;
+            }
+            
+            userData.balance -= bet;
+            userData.gamesPlayed++;
+            updateUI();
+            
+            const board = document.getElementById('plinkoBoard');
+            const ball = document.createElement('div');
+            ball.className = 'plinko-ball';
+            ball.style.left = '50%';
+            ball.style.top = '0';
+            board.appendChild(ball);
+            
+            let pos = 50;
+            let top = 0;
+            
+            const animate = () => {
+                top += 2;
+                if (top % 50 === 0 && top < 400) {
+                    pos += (Math.random() - 0.5) * 20;
+                }
+                ball.style.top = top + 'px';
+                ball.style.left = pos + '%';
+                
+                if (top < 450) {
+                    requestAnimationFrame(animate);
+                } else {
+                    const slotIndex = Math.min(Math.max(Math.floor(pos / 10), 0), 8);
+                    const multipliers = [0.2, 0.5, 1, 2, 5, 2, 1, 0.5, 0.2];
+                    const mult = multipliers[slotIndex];
+                    const win = Math.floor(bet * mult);
+                    
+                    userData.balance += win;
+                    if (mult > 1) userData.wins++;
+                    updateUI();
+                    
+                    if (mult >= 2) {
+                        showToast(`Крупный выигрыш! x${mult}`, 'success');
+                        createConfetti();
+                    } else if (mult >= 1) {
+                        showToast(`Возврат ставки x${mult}`, 'success');
+                    } else {
+                        showToast(`Проигрыш x${mult}`, 'error');
+                    }
+                    
+                    setTimeout(() => ball.remove(), 1000);
+                }
+            };
+            
+            animate();
+        }
+
+        // Cases
+        function renderCases() {
+            const grid = document.getElementById('caseGrid');
+            cases.forEach(caseItem => {
+                const div = document.createElement('div');
+                div.className = 'case-card';
+                div.onclick = () => openCase(caseItem);
+                div.innerHTML = `
+                    <span class="case-rarity rarity-${caseItem.rarity}">${caseItem.rarity}</span>
+                    <div class="case-image">${caseItem.emoji}</div>
+                    <div class="case-name">${caseItem.name}</div>
+                    <div class="case-price">${caseItem.price} GL</div>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        function openCase(caseItem) {
+            if (caseItem.price > userData.balance) {
+                showToast('Недостаточно средств!', 'error');
+                return;
+            }
+            
+            userData.balance -= caseItem.price;
+            userData.gamesPlayed++;
+            updateUI();
+            
+            const opening = document.getElementById('caseOpening');
+            const strip = document.getElementById('itemsStrip');
+            opening.classList.add('active');
+            strip.innerHTML = '';
+            
+            const possibleItems = [...gifts, ...nfts];
+            const shuffled = [...possibleItems].sort(() => Math.random() - 0.5);
+            const winnerIndex = 15 + Math.floor(Math.random() * 5);
+            
+            for (let i = 0; i < 25; i++) {
+                const item = i === winnerIndex ? getRandomReward(caseItem.rarity) : shuffled[i % shuffled.length];
+                const div = document.createElement('div');
+                div.className = 'item-card' + (i === winnerIndex ? ' winner' : '');
+                div.innerHTML = item.emoji || item.image;
+                strip.appendChild(div);
+            }
+            
+            setTimeout(() => {
+                const winner = getRandomReward(caseItem.rarity);
+                if (winner.emoji) {
+                    userData.gifts.push(winner);
+                    showModal(caseItem.emoji, 'Подарок получен!', `Вы выиграли: ${winner.name} (${winner.emoji})`);
+                } else {
+                    userData.nfts.push(winner);
+                    showModal(caseItem.emoji, 'NFT получен!', `Вы выиграли: ${winner.name} (${winner.emoji})`);
+                }
+                userData.wins++;
+                updateUI();
+                opening.classList.remove('active');
+            }, 3000);
+        }
+
+        function getRandomReward(rarity) {
+            const pool = rarity === 'legendary' ? gifts.filter(g => g.rarity === 'legendary' || g.rarity === 'mythic') :
+                        rarity === 'epic' ? gifts.filter(g => g.rarity === 'epic' || g.rarity === 'legendary') :
+                        rarity === 'rare' ? gifts.filter(g => g.rarity === 'rare' || g.rarity === 'epic') :
+                        gifts;
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
+        // Gifts & NFT
+        function renderGifts() {
+            const grid = document.getElementById('giftsGrid');
+            grid.innerHTML = '';
+            gifts.forEach(gift => {
+                const owned = userData.gifts.filter(g => g.id === gift.id).length;
+                const div = document.createElement('div');
+                div.className = 'gift-card';
+                div.onclick = () => buyGift(gift);
+                div.innerHTML = `
+                    ${owned > 0 ? `<span class="gift-owned">${owned}</span>` : ''}
+                    <span class="gift-emoji">${gift.emoji}</span>
+                    <div class="gift-name">${gift.name}</div>
+                    <div class="gift-price">${gift.price} GL</div>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        function renderNFTs() {
+            const grid = document.getElementById('nftGrid');
+            grid.innerHTML = '';
+            nfts.forEach(nft => {
+                const owned = userData.nfts.filter(n => n.id === nft.id).length;
+                const div = document.createElement('div');
+                div.className = 'nft-card';
+                div.onclick = () => buyNFT(nft);
+                div.innerHTML = `
+                    <div class="nft-image">
+                        <div class="nft-glow"></div>
+                        ${nft.emoji}
+                    </div>
+                    <div class="nft-info">
+                        <div class="nft-name">${nft.name}</div>
+                        <div class="nft-collection">${nft.collection}</div>
+                        <div class="nft-price">
+                            <span class="nft-price-value">${nft.price} GL</span>
+                            <span class="nft-rarity rarity-${nft.rarity}">${nft.rarity}</span>
+                        </div>
+                        ${owned > 0 ? `<div style="margin-top:8px;font-size:12px;color:var(--secondary);">В коллекции: ${owned}</div>` : ''}
+                    </div>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        function buyGift(gift) {
+            if (gift.price > userData.balance) {
+                showToast('Недостаточно средств!', 'error');
+                return;
+            }
+            userData.balance -= gift.price;
+            userData.gifts.push(gift);
+            updateUI();
+            renderGifts();
+            showToast(`Вы купили ${gift.name}!`, 'success');
+        }
+
+        function buyNFT(nft) {
+            if (nft.price > userData.balance) {
+                showToast('Недостаточно средств!', 'error');
+                return;
+            }
+            userData.balance -= nft.price;
+            userData.nfts.push(nft);
+            updateUI();
+            renderNFTs();
+            showToast(`Вы купили ${nft.name}!`, 'success');
+        }
+
+        // Upgrade
+        let selectedGifts = [];
+        function selectSlot(slot) {
+            if (slot === 1) {
+                // Show gift selection
+                const uniqueGifts = [...new Set(userData.gifts.map(g => g.id))];
+                if (uniqueGifts.length === 0) {
+                    showToast('У вас нет подарков!', 'error');
+                    return;
+                }
+                
+                // For demo, auto-select most common gift
+                const giftId = uniqueGifts[0];
+                const gift = gifts.find(g => g.id === giftId);
+                const count = userData.gifts.filter(g => g.id === giftId).length;
+                
+                if (count < 3) {
+                    showToast(`Нужно 3 одинаковых подарка (${count}/3)`, 'error');
+                    return;
+                }
+                
+                selectedGifts = [gift, gift, gift];
+                document.getElementById('slot1').innerHTML = `<span style="font-size:48px;">${gift.emoji}</span><span style="font-size:12px;">x3</span>`;
+                document.getElementById('slot1').classList.add('filled');
+                document.getElementById('upgradeBtn').disabled = false;
+            }
+        }
+
+        function doUpgrade() {
+            if (selectedGifts.length < 3) return;
+            if (userData.balance < 500) {
+                showToast('Нужно 500 GL для апгрейда!', 'error');
+                return;
+            }
+            
+            userData.balance -= 500;
+            // Remove 3 gifts
+            const giftId = selectedGifts[0].id;
+            userData.gifts = userData.gifts.filter((g, i) => g.id !== giftId || i >= 3);
+            
+            // Give better version
+            const betterGift = gifts.find(g => g.id === giftId + 1) || selectedGifts[0];
+            userData.gifts.push(betterGift);
+            
+            document.getElementById('slot2').innerHTML = `<span style="font-size:48px;">${betterGift.emoji}</span><span style="font-size:12px;color:var(--secondary);">Улучшено!</span>`;
+            document.getElementById('slot2').classList.add('filled');
+            
+            updateUI();
+            renderGifts();
+            showModal('⬆️', 'Успешный апгрейд!', `Вы улучшили подарок до ${betterGift.name}!`);
+            createConfetti();
+            
+            setTimeout(() => {
+                selectedGifts = [];
+                document.getElementById('slot1').innerHTML = '<span style="font-size:32px;">+</span><span style="font-size:12px;color:var(--text-secondary);">Выбрать</span>';
+                document.getElementById('slot1').classList.remove('filled');
+                document.getElementById('slot2').innerHTML = '<span style="font-size:32px;">?</span><span style="font-size:12px;color:var(--text-secondary);">Результат</span>';
+                document.getElementById('slot2').classList.remove('filled');
+                document.getElementById('upgradeBtn').disabled = true;
+            }, 2000);
+        }
+
+        // Leaderboard
+        function renderLeaderboard() {
+            const list = document.getElementById('leaderboardList');
+            const mockUsers = [
+                { name: 'CryptoKing', balance: 500000, avatar: '👑' },
+                { name: 'LuckyStar', balance: 250000, avatar: '⭐' },
+                { name: 'RocketMan', balance: 100000, avatar: '🚀' },
+                { name: userData.username, balance: userData.balance, avatar: userData.username[0], isYou: true }
+            ].sort((a, b) => b.balance - a.balance);
+            
+            list.innerHTML = '';
+            mockUsers.forEach((user, i) => {
+                const div = document.createElement('div');
+                div.className = 'leaderboard-item';
+                div.innerHTML = `
+                    <div class="leaderboard-rank rank-${i < 3 ? i + 1 : 'other'}">${i + 1}</div>
+                    <div class="leaderboard-user">
+                        <div class="leaderboard-name">${user.avatar} ${user.name} ${user.isYou ? '(Вы)' : ''}</div>
+                        <div class="leaderboard-status">${user.isYou ? 'Текущий баланс' : 'Профессиональный игрок'}</div>
+                    </div>
+                    <div class="leaderboard-amount">${formatNumber(user.balance)} GL</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        // Referral
+        function copyRef() {
+            navigator.clipboard.writeText(userData.refCode);
+            showToast('Код скопирован!', 'success');
+        }
+
+        // Utilities
+        function createParticles() {
+            const container = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.animationDelay = Math.random() * 15 + 's';
+                p.style.animationDuration = (10 + Math.random() * 10) + 's';
+                container.appendChild(p);
+            }
+        }
+
+        function createConfetti() {
+            const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'];
+            for (let i = 0; i < 50; i++) {
+                const c = document.createElement('div');
+                c.className = 'confetti';
+                c.style.left = Math.random() * 100 + 'vw';
+                c.style.background = colors[Math.floor(Math.random() * colors.length)];
+                c.style.animationDelay = Math.random() * 0.5 + 's';
+                document.body.appendChild(c);
+                setTimeout(() => c.remove(), 3000);
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <span class="toast-icon">${type === 'success' ? '✅' : type === 'error' ? '❌' : '⚠️'}</span>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function showModal(icon, title, text) {
+            document.getElementById('modalIcon').textContent = icon;
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalText').textContent = text;
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function closeModal(e) {
+            if (!e || e.target.id === 'modal') {
+                document.getElementById('modal').classList.remove('active');
+            }
+        }
+    </script>
+</body>
+</html>
+'''
+
+print("Часть 3 (JavaScript) создана")
+print(f"Длина: {len(html_part3)} символов")
+print(f"\nОбщая длина HTML: {len(html_part1) + len(html_part2) + len(html_part3)} символов")
